@@ -2,7 +2,7 @@ import random
 from collections import defaultdict
 from fractions import Fraction
 from itertools import chain
-from typing import List
+from typing import Dict, List
 
 from BaseModel import BaseModel
 
@@ -39,11 +39,11 @@ class KFoldCrossValidation:
     """
 
     def __init__(self, model: BaseModel):
-        self.klass_idxes = defaultdict(
+        self.klass_idxes: Dict[str, List[int]] = defaultdict(
             list
         )  # Holds classes as keys and indices they occur on as values
         self.model = model
-        self._line_offsets = []
+        self._line_offsets: List[int] = []
 
     def index_dataset(self, filename: str):
         offset: int = 0
@@ -103,9 +103,9 @@ class KFoldCrossValidation:
             with open(filename, "rb") as dataset:
                 random.seed(i_repetition * 3)
                 self.index_dataset(filename)
-                folds = []
+                folds: List[List[str]] = []
                 for _ in range(k_folds):
-                    fold_rows = []
+                    fold_rows: List[str] = []
                     for idx in self.generate_stratified_fold(k_folds):
                         dataset.seek(self._line_offsets[idx])
                         fold_rows.append(dataset.readline().decode("utf-8").strip())
@@ -122,9 +122,9 @@ class KFoldCrossValidation:
                     remaining_data.append(dataset.readline().decode("utf-8").strip())
                 folds[-1].extend(remaining_data)
 
-            precisions = []
-            f1_scores = []
-            fold_idxes = list(range(len(folds)))
+            precisions: List[float] = []
+            f1_scores: List[float] = []
+            fold_idxes: List[int] = list(range(len(folds)))
             random.shuffle(fold_idxes)
             all_folds_results = []
             for _ in range(k_folds):
@@ -134,7 +134,7 @@ class KFoldCrossValidation:
                 train_folds = list(
                     chain(*(folds[:test_fold_idx] + folds[test_fold_idx + 1 :]))
                 )
-                self.model.load_train_data(train_folds)
+                self.model.fit(train_folds)
                 predictions = self.model.predict(folds[test_fold_idx])
 
                 precisions.append(precision(predictions, test_outcomes))
