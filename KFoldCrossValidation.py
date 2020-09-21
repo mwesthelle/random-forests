@@ -21,8 +21,8 @@ class KFoldCrossValidation:
         Build a map from our classes to the indices they appear in, as well as a list
         of offsets for fast access
 
-    generate_stratified_fold(k_folds)
-        Given `k_folds` and our map of classes to indices, generate a fold by
+    generate_stratified_fold(k_folds: int)
+        Given a `k_folds` number and our map of classes to indices, generate a fold by
         performing a weighted random sample from our indices, with the class
         proportions as weights
 
@@ -30,12 +30,9 @@ class KFoldCrossValidation:
         filename: str,
         k_folds: int,
         repetitions: int,
-        nn: int,
-        minkowski_p
         ):
         Perform k-fold cross validation with `k_folds` and repeating it `repetitions`
-        times on a KNN model with `nn` nearest neighbors using `minkowski_p` order of
-        Minkowski's distance generalization, reading the `filename` dataset
+        times, reading data from the `filename` dataset
     """
 
     def __init__(self, model: BaseModel):
