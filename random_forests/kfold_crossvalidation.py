@@ -4,11 +4,10 @@ from fractions import Fraction
 from itertools import chain
 from typing import Dict, List
 
-from BaseModel import BaseModel
-
-from Metrics import f_measure, precision
-
 import numpy as np
+
+from base_model import BaseModel
+from metrics import f_measure, precision
 
 
 class KFoldCrossValidation:
@@ -35,23 +34,29 @@ class KFoldCrossValidation:
         times, reading data from the `filename` dataset
     """
 
-    def __init__(self, model: BaseModel):
+    def __init__(self, model: BaseModel, delimiter: str = ","):
         self.klass_idxes: Dict[str, List[int]] = defaultdict(
             list
         )  # Holds classes as keys and indices they occur on as values
+        self.delimiter = delimiter
         self.model = model
+        # TODO: use a better/faster data structure (probably some self-balanced BST, but
+        # implementing the list interface for maximum code reuse)
         self._line_offsets: List[int] = []
+        self.headers = []
 
     def index_dataset(self, filename: str):
         offset: int = 0
         self._line_offsets.clear()
         with open(filename, "rb") as dataset:
             dataset.seek(0)
-            offset += len(next(dataset))  # skip header and set offset
+            headers = next(dataset)
+            offset += len(headers)
+            self.headers = headers.decode("utf-8").strip().split(self.delimiter)
             for idx, row in enumerate(dataset):
                 self._line_offsets.append(offset)
                 offset += len(row)
-                values = row.decode("utf-8").strip().split(",")
+                values = row.decode("utf-8").strip().split(self.delimiter)
                 self.klass_idxes[values[-1]].append(idx)
 
     def generate_stratified_fold(self, k_folds: int) -> List[int]:
@@ -61,7 +66,7 @@ class KFoldCrossValidation:
         """
         klass_proportions = {}
         fold_size = len(self._line_offsets) // k_folds
-        fold = []
+        fold: List[int] = []
         for klass in self.klass_idxes:
             proportion = Fraction(
                 numerator=len(self.klass_idxes[klass]),
@@ -100,12 +105,17 @@ class KFoldCrossValidation:
             with open(filename, "rb") as dataset:
                 random.seed(i_repetition * 3)
                 self.index_dataset(filename)
-                folds: List[List[str]] = []
+                folds: List[List[List[str]]] = []
                 for _ in range(k_folds):
                     fold_rows: List[str] = []
                     for idx in self.generate_stratified_fold(k_folds):
                         dataset.seek(self._line_offsets[idx])
-                        fold_rows.append(dataset.readline().decode("utf-8").strip())
+                        fold_rows.append(
+                            dataset.readline()
+                            .decode("utf-8")
+                            .strip()
+                            .split(self.delimiter)
+                        )
                     folds.append(fold_rows)
 
                 remaining_idxs = []
@@ -116,7 +126,9 @@ class KFoldCrossValidation:
                 remaining_data = []
                 for idx in remaining_idxs:
                     dataset.seek(self._line_offsets[idx])
-                    remaining_data.append(dataset.readline().decode("utf-8").strip())
+                    remaining_data.append(
+                        dataset.readline().decode("utf-8").strip().split(self.delimiter)
+                    )
                 folds[-1].extend(remaining_data)
 
             precisions: List[float] = []
@@ -126,12 +138,14 @@ class KFoldCrossValidation:
             all_folds_results = []
             for _ in range(k_folds):
                 test_fold_idx = fold_idxes.pop()
-
-                test_outcomes = np.array([int(t[-1]) for t in folds[test_fold_idx]])
+                try:
+                    test_outcomes = np.array([int(t[-1]) for t in folds[test_fold_idx]])
+                except ValueError:
+                    test_outcomes = [t[-1] for t in folds[test_fold_idx]]
                 train_folds = list(
                     chain(*(folds[:test_fold_idx] + folds[test_fold_idx + 1 :]))
                 )
-                self.model.fit(train_folds)
+                self.model.fit(train_folds, attributes=self.headers[:-1])
                 predictions = self.model.predict(folds[test_fold_idx])
 
                 precisions.append(precision(predictions, test_outcomes))

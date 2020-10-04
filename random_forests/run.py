@@ -1,0 +1,9 @@
+import os
+
+from decision_tree import DecisionTree
+from kfold_crossvalidation import KFoldCrossValidation
+
+if __name__ == "__main__":
+    model = DecisionTree()
+    kfold = KFoldCrossValidation(model, delimiter=";")
+    kfold.kfold_cross_validation(os.path.join(os.getcwd(), "data", "benchmark.csv"))
