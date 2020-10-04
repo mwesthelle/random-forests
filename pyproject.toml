@@ -17,11 +17,7 @@ flake8 = "^3.8.3"
 
 [tool.black]
 line-length = 88
-target-version = "py38"
-
-[flake8]
-max-line-length = 88
-extend-ignore = ["E203", "W503"]
+target-version = ["py38"]
 
 [build-system]
 requires = ["poetry>=0.12"]
