@@ -107,7 +107,7 @@ class KFoldCrossValidation:
                 self.index_dataset(filename)
                 folds: List[List[List[str]]] = []
                 for _ in range(k_folds):
-                    fold_rows: List[str] = []
+                    fold_rows: List[List[str]] = []
                     for idx in self.generate_stratified_fold(k_folds):
                         dataset.seek(self._line_offsets[idx])
                         fold_rows.append(
