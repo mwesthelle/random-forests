@@ -1,11 +1,15 @@
 from collections import Counter
 from enum import Enum
 from operator import itemgetter
-from typing import Dict, List, Tuple, Union, cast
+from typing import Dict, List, NewType, Tuple, Union
 
 from base_model import BaseModel
+from helpers import all_equal
 
 import numpy as np
+
+DataType = NewType("DataType", Union[str, int, float])
+ClassType = NewType("DataType", Union[str, int])
 
 
 class SelectionStrategy(Enum):
@@ -15,39 +19,45 @@ class SelectionStrategy(Enum):
 
 
 class TreeNode:
-    def __init__(self):
+    def __init__(self, is_leaf):
         self.children = []
-        self.is_leaf = None
+        self.is_leaf = is_leaf
 
 
 class DecisionTree(BaseModel):
-    def __init__(self, root=None, attributes={}, outcomes=[]):
+    def __init__(self, root: TreeNode = None):
         self.root = root
-        self.attributes: Dict[str, List] = attributes
-        self.outcomes: List[Union[str, int]] = outcomes
         self.selection_strategy: SelectionStrategy = SelectionStrategy.c45
 
-    def fit(self, data_iter: List[str], attributes: List[str]):
-        attribute2col_map = {k: v for k, v in enumerate(attributes)}
+    # TODO: investigate how to handle different columns of different types (categorical
+    # or numerical) and remove the ugly hack of the 'numerical' argument
+    def fit(self, data_iter: List[str], attribute_names: List[str], numerical=True):
+        attribute2col_map = {k: v for k, v in enumerate(attribute_names)}
+        attributes_data: Dict[str, List[DataType]] = dict()
+        outcomes: List[ClassType] = []
         for row in data_iter:
             *values, class_ = row
+            outcomes.append(class_)
             for val_idx, val in enumerate(values):
                 attr_name = attribute2col_map[val_idx]
-                self.attributes.setdefault(attr_name, []).append(val)
-            self.outcomes.append(class_)
-        for att in self.attributes:
-            self.attributes[att] = DecisionTree.numerical2categorical(
-                self.attributes[att]
-            )
+                attributes_data.setdefault(attr_name, []).append(val)
+        if numerical:
+            for att in attributes_data:
+                attributes_data[att] = DecisionTree.numerical2categorical(
+                    attributes_data[att]
+                )
+
+    def build_tree(self, attributes, outcomes, selection_stragegy: SelectionStrategy):
+        pass
 
     def predict(self, test_data: List[str]):
         pass
 
-    def get_best_attribute(self) -> str:
-        outcomes_info = DecisionTree.calculate_info(self.outcomes)
+    def get_best_attribute(self, attribute_data, outcomes) -> str:
+        outcomes_info = DecisionTree.calculate_info(outcomes)
         attributes_info = {
-            att: self.calculate_attribute_info(att_vals)
-            for att, att_vals in self.attributes.items()
+            att: self.calculate_attribute_info(att_vals, outcomes)
+            for att, att_vals in attribute_data.items()
         }
         info_gains: List[Tuple[str, float]] = [
             (att, DecisionTree.calculate_info_gain(outcomes_info, att_info))
@@ -55,10 +65,12 @@ class DecisionTree(BaseModel):
         ]
         return sorted(info_gains, key=itemgetter(1), reverse=True).pop()[0]
 
-    def calculate_attribute_info(self, attribute_data: List[str]) -> float:
-        attr_class_counter = Counter(zip(attribute_data, self.outcomes))
+    def calculate_attribute_info(
+        self, attribute_data: List[str], outcomes: List[str]
+    ) -> float:
+        attr_class_counter = Counter(zip(attribute_data, outcomes))
         category_counter = Counter(attribute_data)
-        classes_ = set(self.outcomes)
+        classes_ = set(outcomes)
         attribute_info = 0
         for category in category_counter:
             category_class_probs = [
@@ -87,10 +99,7 @@ class DecisionTree(BaseModel):
 
     @staticmethod
     def numerical2categorical(attribute_data: List[Union[str, float]]):
-        try:
-            feature_mean = np.mean(attribute_data)
-        except TypeError:
-            return cast(List[str], attribute_data)
+        feature_mean = np.mean(attribute_data)
         return [
             "greater" if datapoint > feature_mean else "lesser"
             for datapoint in attribute_data
