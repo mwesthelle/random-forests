@@ -4,7 +4,7 @@ from typing import Iterable, List
 
 class BaseModel(ABC):
     @abstractmethod
-    def fit(self, data_iter: Iterable[List[str]], attributes: List[str]):
+    def fit(self, data_iter: Iterable[List[str]], attribute_names: List[str]):
         """
         Train model using data_iter
         """

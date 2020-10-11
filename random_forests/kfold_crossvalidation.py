@@ -145,7 +145,7 @@ class KFoldCrossValidation:
                 train_folds = list(
                     chain(*(folds[:test_fold_idx] + folds[test_fold_idx + 1 :]))
                 )
-                self.model.fit(train_folds, attributes=self.headers[:-1])
+                self.model.fit(train_folds, attribute_names=self.headers[:-1])
                 predictions = self.model.predict(folds[test_fold_idx])
 
                 precisions.append(precision(predictions, test_outcomes))
