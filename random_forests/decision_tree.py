@@ -1,7 +1,7 @@
 from collections import Counter, OrderedDict
 from enum import Enum
 from operator import itemgetter
-from typing import Dict, List, NewType, Tuple, Union
+from typing import Dict, List, NamedTuple, NewType, Tuple, Union, cast
 
 from base_model import BaseModel
 from helpers import all_equal
@@ -10,6 +10,7 @@ import numpy as np
 
 DataType = NewType("DataType", Union[str, int, float])
 ClassType = NewType("ClassType", Union[str, int])
+AttributeVal = NamedTuple("AttributeVal", attribute_name=str, attribute_val=DataType)
 
 
 class SelectionStrategy(Enum):
@@ -23,31 +24,32 @@ class TreeNode:
         self,
         attribute_data: Dict[str, DataType],
         outcomes: List[ClassType],
-        best_split_attribute: str = None,
+        best_split_attribute_val: AttributeVal = None,
     ):
-        self.best_split_attribute = best_split_attribute
+        self.best_split_attribute_val = best_split_attribute_val
         self.attribute_data = attribute_data
         self.outcomes = outcomes
-        self.children = []
+        self.children: List[TreeNode] = []
         self.class_ = None
 
 
 class DecisionTree(BaseModel):
     def __init__(self, root: TreeNode = None):
         self.root = root
+        self.idx2attr = dict()
         self.selection_strategy: SelectionStrategy = SelectionStrategy.c45
 
     # TODO: investigate how to handle different columns of different types (categorical
     # or numerical) and remove the ugly hack of the 'numerical' argument
     def fit(self, data_iter: List[str], attribute_names: List[str], numerical=False):
-        attribute2col_map = {k: v for k, v in enumerate(attribute_names)}
+        self.idx2attr = {idx: name for idx, name in enumerate(attribute_names)}
         attributes_data: Dict[str, List[DataType]] = dict()
         outcomes: List[ClassType] = []
         for row in data_iter:
             *values, class_ = row
             outcomes.append(ClassType(class_))
             for val_idx, val in enumerate(values):
-                attr_name = attribute2col_map[val_idx]
+                attr_name = self.idx2attr[val_idx]
                 attributes_data.setdefault(attr_name, []).append(DataType(val))
         if numerical:
             for att in attributes_data:
@@ -78,42 +80,31 @@ class DecisionTree(BaseModel):
             for child in children:
                 self.build_tree(child)
 
-    @staticmethod
-    def split_attribute(node: TreeNode, chosen_attribute: str):
-        ordered_data = OrderedDict(node.attribute_data)
-        attribute2idx_map = {
-            attr: idx for idx, attr in enumerate(list(ordered_data.keys()))
-        }
-        idx2attribute_map = {
-            idx: attr for idx, attr in enumerate(list(ordered_data.keys()))
-        }
-        attribute_values = [v for _, v in ordered_data.items()]
-        chosen_attribute_set = set(ordered_data[chosen_attribute])
-        children_data: Dict[str, Dict[str, List[DataType]]] = dict()
-        class_outcomes: Dict[str, List[ClassType]] = dict()
-        children: List[TreeNode] = []
-        for row_idx, row_vals in enumerate(zip(*attribute_values)):
-            chosen_attribute_val = row_vals[attribute2idx_map[chosen_attribute]]
-            children_data.setdefault(chosen_attribute_val, dict())
-            class_outcomes.setdefault(chosen_attribute_val, []).append(
-                node.outcomes[row_idx]
-            )
-            for col_idx, col_val in enumerate(row_vals):
-                if col_idx != attribute2idx_map[chosen_attribute]:
-                    children_data[chosen_attribute_val].setdefault(
-                        idx2attribute_map[col_idx], []
-                    ).append(col_val)
-        for attr_value in chosen_attribute_set:
-            child_node = TreeNode(
-                attribute_data=children_data[attr_value],
-                outcomes=class_outcomes[attr_value],
-                best_split_attribute=attr_value,
-            )
-            children.append(child_node)
-        return children
-
     def predict(self, test_data: List[str]):
-        pass
+        predictions: List[ClassType] = []
+        for row in test_data:
+            test_data_point = {
+                self.idx2attr[col_idx]: col_val
+                for col_idx, col_val in enumerate(row[:-1])
+            }
+            predictions.append(
+                self._predict(cast(TreeNode, self.root), test_data_point)
+            )
+        return predictions
+
+    @staticmethod
+    def _predict(tree_node: TreeNode, data_point: Dict[ClassType, DataType]):
+        if tree_node.class_ is not None:
+            return tree_node.class_
+        else:
+            best_attribute = tree_node.children[0].best_split_attribute_val
+            for child in tree_node.children:
+                if (
+                    data_point[best_attribute.attribute_name]
+                    == child.best_split_attribute_val.attribute_val
+                ):
+                    data_point.pop(child.best_split_attribute_val.attribute_name)
+                    DecisionTree._predict(child, data_point)
 
     def get_best_attribute(self, attribute_data, outcomes) -> str:
         outcomes_info = DecisionTree.calculate_info(outcomes)
@@ -143,6 +134,40 @@ class DecisionTree(BaseModel):
                 category_counter[category] / len(attribute_data)
             ) * DecisionTree.calculate_entropy(category_class_probs)
         return attribute_info
+
+    @staticmethod
+    def split_attribute(node: TreeNode, chosen_attribute: str):
+        ordered_data = OrderedDict(node.attribute_data)
+        attribute2idx_map = {
+            attr: idx for idx, attr in enumerate(list(ordered_data.keys()))
+        }
+        idx2attribute_map = {
+            idx: attr for idx, attr in enumerate(list(ordered_data.keys()))
+        }
+        attribute_values = [v for _, v in ordered_data.items()]
+        chosen_attribute_set = set(ordered_data[chosen_attribute])
+        children_data: Dict[str, Dict[str, List[DataType]]] = dict()
+        class_outcomes: Dict[str, List[ClassType]] = dict()
+        children: List[TreeNode] = []
+        for row_idx, row_vals in enumerate(zip(*attribute_values)):
+            chosen_attribute_val = row_vals[attribute2idx_map[chosen_attribute]]
+            children_data.setdefault(chosen_attribute_val, dict())
+            class_outcomes.setdefault(chosen_attribute_val, []).append(
+                node.outcomes[row_idx]
+            )
+            for col_idx, col_val in enumerate(row_vals):
+                if col_idx != attribute2idx_map[chosen_attribute]:
+                    children_data[chosen_attribute_val].setdefault(
+                        idx2attribute_map[col_idx], []
+                    ).append(col_val)
+        for attr_value in chosen_attribute_set:
+            child_node = TreeNode(
+                attribute_data=children_data[attr_value],
+                outcomes=class_outcomes[attr_value],
+                best_split_attribute_val=AttributeVal(chosen_attribute, attr_value),
+            )
+            children.append(child_node)
+        return children
 
     @staticmethod
     def calculate_info_gain(outcome_info: float, attribute_info: float) -> float:

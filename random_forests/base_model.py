@@ -10,7 +10,7 @@ class BaseModel(ABC):
         """
 
     @abstractmethod
-    def predict(self, test_data: List[List[str]]):
+    def predict(self, test_data: Iterable[List[str]]):
         """
         Return predictions given some test_data
         """
