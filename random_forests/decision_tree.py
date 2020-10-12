@@ -69,6 +69,10 @@ class DecisionTree(BaseModel):
             if len(self.root.children) > 0:
                 raise ValueError("Tree has already been fit with data!")
             else:
+                self.idx2attr = {
+                    idx: name
+                    for idx, name in enumerate(self.root.attribute_data_dict.keys())
+                }
                 self.build_tree(self.root)
         else:
             raise ValueError(
@@ -79,6 +83,9 @@ class DecisionTree(BaseModel):
         if all_equal(node.outcomes):
             node.class_ = node.outcomes[0]
             return
+        elif len(node.attribute_data_dict) == 0:
+            outcomes_counter = Counter(node.outcomes)
+            return max(outcomes_counter.items(), key=itemgetter(1))[0]
         else:
             chosen_attribute = self.get_best_attribute(
                 node.attribute_data_dict, node.outcomes
