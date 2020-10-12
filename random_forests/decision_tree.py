@@ -26,6 +26,7 @@ class TreeNode:
         outcomes: List[ClassType],
         best_split_attribute_val: AttributeVal = None,
         idx2attr: Dict[int, str] = dict(),
+        numerical: bool = False,
     ):
         self.best_split_attribute_val = best_split_attribute_val
         self.attribute_data_dict = attribute_data_dict
@@ -33,6 +34,7 @@ class TreeNode:
         self.children: List[TreeNode] = []
         self.class_ = None
         self.idx2attr = idx2attr
+        self.numerical = numerical
 
 
 class DecisionTree(BaseModel):
@@ -125,6 +127,9 @@ class DecisionTree(BaseModel):
     def _predict(tree_node: TreeNode, data_point: Dict[ClassType, DataType]):
         if tree_node.class_ is not None:
             return tree_node.class_
+        elif len(tree_node.attribute_data_dict) == 0:
+            outcome_counter = Counter(tree_node.outcomes)
+            return max(outcome_counter.items(), key=itemgetter(1))[0]
         else:
             best_attribute = tree_node.children[0].best_split_attribute_val
             for child in tree_node.children:
@@ -133,7 +138,14 @@ class DecisionTree(BaseModel):
                     == child.best_split_attribute_val.attribute_val
                 ):
                     data_point.pop(child.best_split_attribute_val.attribute_name)
+                    tree_node.attribute_data_dict.pop(
+                        child.best_split_attribute_val.attribute_name
+                    )
                     return DecisionTree._predict(child, data_point)
+            else:
+                data_point.pop(best_attribute.attribute_name)
+                tree_node.attribute_data_dict.pop(best_attribute.attribute_name)
+                return DecisionTree._predict(tree_node, data_point)
 
     @staticmethod
     def split_attribute(node: TreeNode, chosen_attribute: str):
