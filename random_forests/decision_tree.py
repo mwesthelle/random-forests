@@ -43,27 +43,37 @@ class DecisionTree(BaseModel):
     # or numerical) and remove the ugly hack of the 'numerical' argument
     def fit(
         self,
-        data_iter: Iterable[List[str]],
-        attribute_names: List[str],
+        data_iter: Iterable[List[str]] = None,
+        attribute_names: List[str] = None,
         numerical=False,
     ):
-        self.idx2attr = {idx: name for idx, name in enumerate(attribute_names)}
-        attributes_data: Dict[str, List[DataType]] = dict()
-        outcomes: List[ClassType] = []
-        for row in data_iter:
-            *values, class_ = row
-            outcomes.append(ClassType(class_))
-            for val_idx, val in enumerate(values):
-                attr_name = self.idx2attr[val_idx]
-                attributes_data.setdefault(attr_name, []).append(DataType(val))
-        if numerical:
-            for att in attributes_data:
-                attributes_data[att] = DecisionTree.numerical2categorical(
-                    attributes_data[att]
-                )
-        root_node = TreeNode(attributes_data, outcomes)
-        self.root = root_node
-        self.build_tree(root_node)
+        if self.root is None and data_iter is not None and attribute_names is not None:
+            self.idx2attr = {idx: name for idx, name in enumerate(attribute_names)}
+            attributes_data: Dict[str, List[DataType]] = dict()
+            outcomes: List[ClassType] = []
+            for row in data_iter:
+                *values, class_ = row
+                outcomes.append(ClassType(class_))
+                for val_idx, val in enumerate(values):
+                    attr_name = self.idx2attr[val_idx]
+                    attributes_data.setdefault(attr_name, []).append(DataType(val))
+            if numerical:
+                for att in attributes_data:
+                    attributes_data[att] = DecisionTree.numerical2categorical(
+                        attributes_data[att]
+                    )
+            root_node = TreeNode(attributes_data, outcomes)
+            self.root = root_node
+            self.build_tree(root_node)
+        elif self.root is not None:
+            if len(self.root.children) > 0:
+                raise ValueError("Tree has already been fit with data!")
+            else:
+                self.build_tree(self.root)
+        else:
+            raise ValueError(
+                "Need either a tree node, or all required data to build one"
+            )
 
     def build_tree(self, node: TreeNode):
         if all_equal(node.outcomes):
