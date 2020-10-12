@@ -25,18 +25,19 @@ class TreeNode:
         attribute_data_dict: Dict[str, DataType],
         outcomes: List[ClassType],
         best_split_attribute_val: AttributeVal = None,
+        idx2attr: Dict[int, str] = dict(),
     ):
         self.best_split_attribute_val = best_split_attribute_val
         self.attribute_data_dict = attribute_data_dict
         self.outcomes = outcomes
         self.children: List[TreeNode] = []
         self.class_ = None
+        self.idx2attr = idx2attr
 
 
 class DecisionTree(BaseModel):
     def __init__(self, root: TreeNode = None):
         self.root = root
-        self.idx2attr = dict()
         self.selection_strategy: SelectionStrategy = SelectionStrategy.c45
 
     # TODO: investigate how to handle different columns of different types (categorical
@@ -48,32 +49,30 @@ class DecisionTree(BaseModel):
         numerical=False,
     ):
         if self.root is None and data_iter is not None and attribute_names is not None:
-            self.idx2attr = {idx: name for idx, name in enumerate(attribute_names)}
+            idx2attr = {idx: name for idx, name in enumerate(attribute_names)}
             attributes_data: Dict[str, List[DataType]] = dict()
             outcomes: List[ClassType] = []
             for row in data_iter:
                 *values, class_ = row
                 outcomes.append(ClassType(class_))
                 for val_idx, val in enumerate(values):
-                    attr_name = self.idx2attr[val_idx]
+                    attr_name = idx2attr[val_idx]
                     attributes_data.setdefault(attr_name, []).append(DataType(val))
+            # TODO: this is dumb. remove this and do it proper
             if numerical:
                 for att in attributes_data:
                     attributes_data[att] = DecisionTree.numerical2categorical(
                         attributes_data[att]
                     )
-            root_node = TreeNode(attributes_data, outcomes)
+            root_node = TreeNode(attributes_data, outcomes, idx2attr=idx2attr)
             self.root = root_node
             self.build_tree(root_node)
         elif self.root is not None:
-            if len(self.root.children) > 0:
-                raise ValueError("Tree has already been fit with data!")
-            else:
-                self.idx2attr = {
-                    idx: name
-                    for idx, name in enumerate(self.root.attribute_data_dict.keys())
-                }
-                self.build_tree(self.root)
+            self.root.idx2attr = {
+                idx: name
+                for idx, name in enumerate(self.root.attribute_data_dict.keys())
+            }
+            self.build_tree(self.root)
         else:
             raise ValueError(
                 "Need either a tree node, or all required data to build one"
@@ -85,7 +84,8 @@ class DecisionTree(BaseModel):
             return
         elif len(node.attribute_data_dict) == 0:
             outcomes_counter = Counter(node.outcomes)
-            return max(outcomes_counter.items(), key=itemgetter(1))[0]
+            node.class_ = max(outcomes_counter.items(), key=itemgetter(1))[0]
+            return
         else:
             chosen_attribute = self.get_best_attribute(
                 node.attribute_data_dict, node.outcomes
@@ -99,7 +99,7 @@ class DecisionTree(BaseModel):
         predictions: List[ClassType] = []
         for row in test_data:
             test_data_point = {
-                self.idx2attr[col_idx]: col_val
+                self.root.idx2attr[col_idx]: col_val
                 for col_idx, col_val in enumerate(row[:-1])
             }
             predictions.append(
@@ -133,7 +133,7 @@ class DecisionTree(BaseModel):
                     == child.best_split_attribute_val.attribute_val
                 ):
                     data_point.pop(child.best_split_attribute_val.attribute_name)
-                    DecisionTree._predict(child, data_point)
+                    return DecisionTree._predict(child, data_point)
 
     @staticmethod
     def split_attribute(node: TreeNode, chosen_attribute: str):
@@ -180,6 +180,7 @@ class DecisionTree(BaseModel):
         probs = np.array([v / total_data_points for v in category_counter.values()])
         return DecisionTree.calculate_entropy(probs)
 
+    # TODO: handle numerical attributes here
     @staticmethod
     def calculate_attribute_info(
         attribute_data: List[str], outcomes: List[str]
