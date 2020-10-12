@@ -4,6 +4,7 @@ from typing import Dict, Iterable, List, NewType, Union
 
 from base_model import BaseModel
 from decision_tree import DecisionTree, TreeNode
+from helpers import get_elements_from_data
 
 import numpy as np
 
@@ -17,6 +18,8 @@ class RandomForest(BaseModel):
     def __init__(self, ntrees: int, model: BaseModel):
         self.ntrees = ntrees
         self.model = model
+        self.forest: List[DecisionTree] = []
+        self.attr2idx: Dict[str, int]
 
     def fit(
         self,
@@ -24,8 +27,12 @@ class RandomForest(BaseModel):
         attribute_names: List[str],
         numerical=False,
     ):
+        """
+        Trains the model on data provided by 'data_iter'. The 'attribute_names'
+        property MUST be ordered according to the indices in the 'data_iter' lists.
+        """
+        self.attr2idx = {attr: idx for idx, attr in enumerate(attribute_names)}
         forest_data = [self.generate_bootstrap(data_iter) for _ in range(self.ntrees)]
-        forest: List[DecisionTree] = []
         for tree_data in forest_data:
             idx2attr = {idx: name for idx, name in enumerate(attribute_names)}
             attributes_data: Dict[str, List[DataType]] = dict()
@@ -46,11 +53,15 @@ class RandomForest(BaseModel):
                     attributes_data[att] = DecisionTree.numerical2categorical(
                         attributes_data[att]
                     )
-            forest.append(DecisionTree(root=TreeNode(attributes_data, outcomes)))
-        for tree in forest:
-            tree.fit()
+            self.forest.append(DecisionTree(root=TreeNode(attributes_data, outcomes)))
+        for tree in self.forest:
+            tree.fit(numerical=numerical)
 
     def predict(self, test_data: Iterable[List[str]]):
+        for tree in self.forest:
+            indices = [self.attr2idx[attr] for attr in tree.root.attribute_data_dict]
+            selected_data = get_elements_from_data(test_data, indices)
+            predictions = tree.predict(selected_data)
         pass
 
     @staticmethod
