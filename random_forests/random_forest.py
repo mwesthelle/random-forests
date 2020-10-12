@@ -1,12 +1,12 @@
 import math
 import random
+from collections import Counter
+from operator import itemgetter
 from typing import Dict, Iterable, List, NewType, Union
 
 from base_model import BaseModel
 from decision_tree import DecisionTree, TreeNode
 from helpers import get_elements_from_data
-
-import numpy as np
 
 DataType = NewType("DataType", Union[str, int, float])
 ClassType = NewType("ClassType", Union[str, int])
@@ -58,11 +58,13 @@ class RandomForest(BaseModel):
             tree.fit(numerical=numerical)
 
     def predict(self, test_data: Iterable[List[str]]):
+        votes = []
         for tree in self.forest:
             indices = [self.attr2idx[attr] for attr in tree.root.attribute_data_dict]
             selected_data = get_elements_from_data(test_data, indices)
-            predictions = tree.predict(selected_data)
-        pass
+            votes.append(tree.predict(selected_data))
+        vote_counter = Counter(votes)
+        return max(vote_counter.items(), key=itemgetter(1))[0]
 
     @staticmethod
     def generate_bootstrap(data):
