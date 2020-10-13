@@ -1,4 +1,5 @@
 from collections import Counter, OrderedDict
+from copy import deepcopy
 from enum import Enum
 from operator import itemgetter
 from typing import Dict, Iterable, List, NamedTuple, NewType, Tuple, Union, cast
@@ -24,31 +25,25 @@ class TreeNode:
         self,
         attribute_data_dict: Dict[str, DataType],
         outcomes: List[ClassType],
-        best_split_attribute_val: AttributeVal = None,
+        cutting_point_attribute_val: AttributeVal = None,
         idx2attr: Dict[int, str] = dict(),
-        numerical: bool = False,
     ):
-        self.best_split_attribute_val = best_split_attribute_val
+        self.cutting_point_attribute_val = cutting_point_attribute_val
         self.attribute_data_dict = attribute_data_dict
         self.outcomes = outcomes
         self.children: List[TreeNode] = []
         self.class_ = None
         self.idx2attr = idx2attr
-        self.numerical = numerical
 
 
 class DecisionTree(BaseModel):
-    def __init__(self, root: TreeNode = None):
+    def __init__(self, root: TreeNode = None, numerical: bool = False):
         self.root = root
         self.selection_strategy: SelectionStrategy = SelectionStrategy.c45
+        self.numerical = numerical
 
-    # TODO: investigate how to handle different columns of different types (categorical
-    # or numerical) and remove the ugly hack of the 'numerical' argument
     def fit(
-        self,
-        data_iter: Iterable[List[str]] = None,
-        attribute_names: List[str] = None,
-        numerical=False,
+        self, data_iter: Iterable[List[str]] = None, attribute_names: List[str] = None
     ):
         if self.root is None and data_iter is not None and attribute_names is not None:
             idx2attr = {idx: name for idx, name in enumerate(attribute_names)}
@@ -60,12 +55,6 @@ class DecisionTree(BaseModel):
                 for val_idx, val in enumerate(values):
                     attr_name = idx2attr[val_idx]
                     attributes_data.setdefault(attr_name, []).append(DataType(val))
-            # TODO: this is dumb. remove this and do it proper
-            if numerical:
-                for att in attributes_data:
-                    attributes_data[att] = DecisionTree.numerical2categorical(
-                        attributes_data[att]
-                    )
             root_node = TreeNode(attributes_data, outcomes, idx2attr=idx2attr)
             self.root = root_node
             self.build_tree(root_node)
@@ -89,7 +78,7 @@ class DecisionTree(BaseModel):
             node.class_ = max(outcomes_counter.items(), key=itemgetter(1))[0]
             return
         else:
-            chosen_attribute = self.get_best_attribute(
+            chosen_attribute = self.get_cutting_point(
                 node.attribute_data_dict, node.outcomes
             )
             children = self.split_attribute(node, chosen_attribute)
@@ -105,11 +94,11 @@ class DecisionTree(BaseModel):
                 for col_idx, col_val in enumerate(row[:-1])
             }
             predictions.append(
-                self._predict(cast(TreeNode, self.root), test_data_point)
+                self._predict(cast(TreeNode, deepcopy(self.root)), test_data_point)
             )
         return predictions
 
-    def get_best_attribute(
+    def get_cutting_point(
         self, attribute_data_dict: Dict[str, DataType], outcomes: List[ClassType]
     ) -> str:
         outcomes_info = DecisionTree.calculate_info(outcomes)
@@ -118,10 +107,29 @@ class DecisionTree(BaseModel):
             for att, att_vals in attribute_data_dict.items()
         }
         gain_ratios: List[Tuple[str, float]] = [
-            (att, DecisionTree.calculate_gain_ratio(outcomes_info, att_info, att_data))
+            (att, DecisionTree.calculate_gain_ratio(att_info, outcomes_info, att_data))
             for att, (att_info, att_data) in attribute2info_data.items()
         ]
         return max(gain_ratios, key=itemgetter(1))[0]
+
+    def calculate_attribute_info(
+        self, attribute_data: List[str], outcomes: List[str]
+    ) -> float:
+        if self.numerical:
+            attribute_data = self.numerical2categorical(attribute_data)
+        attr_class_counter = Counter(zip(attribute_data, outcomes))
+        category_counter = Counter(attribute_data)
+        classes_ = set(outcomes)
+        attribute_info = 0
+        for category in category_counter:
+            category_class_probs = [
+                attr_class_counter[(category, class_)] / category_counter[category]
+                for class_ in classes_
+            ]
+            attribute_info += (
+                category_counter[category] / len(attribute_data)
+            ) * DecisionTree.calculate_entropy(category_class_probs)
+        return attribute_info
 
     @staticmethod
     def _predict(tree_node: TreeNode, data_point: Dict[ClassType, DataType]):
@@ -131,21 +139,20 @@ class DecisionTree(BaseModel):
             outcome_counter = Counter(tree_node.outcomes)
             return max(outcome_counter.items(), key=itemgetter(1))[0]
         else:
-            best_attribute = tree_node.children[0].best_split_attribute_val
+            best_attribute = tree_node.children[0].cutting_point_attribute_val
             for child in tree_node.children:
                 if (
                     data_point[best_attribute.attribute_name]
-                    == child.best_split_attribute_val.attribute_val
+                    == child.cutting_point_attribute_val.attribute_val
                 ):
-                    data_point.pop(child.best_split_attribute_val.attribute_name)
+                    data_point.pop(child.cutting_point_attribute_val.attribute_name)
                     tree_node.attribute_data_dict.pop(
-                        child.best_split_attribute_val.attribute_name
+                        child.cutting_point_attribute_val.attribute_name
                     )
                     return DecisionTree._predict(child, data_point)
             else:
-                data_point.pop(best_attribute.attribute_name)
-                tree_node.attribute_data_dict.pop(best_attribute.attribute_name)
-                return DecisionTree._predict(tree_node, data_point)
+                outcome_counter = Counter(tree_node.outcomes)
+                return max(outcome_counter.items(), key=itemgetter(1))[0]
 
     @staticmethod
     def split_attribute(node: TreeNode, chosen_attribute: str):
@@ -176,7 +183,7 @@ class DecisionTree(BaseModel):
             child_node = TreeNode(
                 attribute_data_dict=children_data_dict[attr_value],
                 outcomes=class_outcomes[attr_value],
-                best_split_attribute_val=AttributeVal(chosen_attribute, attr_value),
+                cutting_point_attribute_val=AttributeVal(chosen_attribute, attr_value),
             )
             children.append(child_node)
         return children
@@ -191,25 +198,6 @@ class DecisionTree(BaseModel):
         total_data_points = len(data)
         probs = np.array([v / total_data_points for v in category_counter.values()])
         return DecisionTree.calculate_entropy(probs)
-
-    # TODO: handle numerical attributes here
-    @staticmethod
-    def calculate_attribute_info(
-        attribute_data: List[str], outcomes: List[str]
-    ) -> float:
-        attr_class_counter = Counter(zip(attribute_data, outcomes))
-        category_counter = Counter(attribute_data)
-        classes_ = set(outcomes)
-        attribute_info = 0
-        for category in category_counter:
-            category_class_probs = [
-                attr_class_counter[(category, class_)] / category_counter[category]
-                for class_ in classes_
-            ]
-            attribute_info += (
-                category_counter[category] / len(attribute_data)
-            ) * DecisionTree.calculate_entropy(category_class_probs)
-        return attribute_info
 
     @staticmethod
     def calculate_info_gain(outcome_info: float, attribute_info: float) -> float:

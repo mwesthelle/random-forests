@@ -48,14 +48,9 @@ class RandomForest(BaseModel):
                     if val_idx in sample_attribute_indices:
                         attr_name = idx2attr[val_idx]
                         attributes_data.setdefault(attr_name, []).append(DataType(val))
-            if numerical:
-                for att in attributes_data:
-                    attributes_data[att] = DecisionTree.numerical2categorical(
-                        attributes_data[att]
-                    )
             self.forest.append(DecisionTree(root=TreeNode(attributes_data, outcomes)))
         for tree in self.forest:
-            tree.fit(numerical=numerical)
+            tree.fit()
 
     def predict(self, test_data: Iterable[List[str]]):
         votes = []
