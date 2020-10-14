@@ -22,10 +22,7 @@ class RandomForest(BaseModel):
         self.attr2idx: Dict[str, int]
 
     def fit(
-        self,
-        data_iter: Iterable[List[str]],
-        attribute_names: List[str],
-        numerical=False,
+        self, data_iter: Iterable[List[str]], attribute_names: List[str],
     ):
         """
         Trains the model on data provided by 'data_iter'. The 'attribute_names'
@@ -53,13 +50,16 @@ class RandomForest(BaseModel):
             tree.fit()
 
     def predict(self, test_data: Iterable[List[str]]):
+        predictions = []
         votes = []
         for tree in self.forest:
             indices = [self.attr2idx[attr] for attr in tree.root.attribute_data_dict]
             selected_data = get_elements_from_data(test_data, indices)
             votes.append(tree.predict(selected_data))
-        vote_counter = Counter(votes)
-        return max(vote_counter.items(), key=itemgetter(1))[0]
+        for col in zip(*votes):
+            prediction = max(Counter(col).items(), key=itemgetter(1))[0]
+            predictions.append(prediction)
+        return predictions
 
     @staticmethod
     def generate_bootstrap(data):
