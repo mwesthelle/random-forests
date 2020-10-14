@@ -190,6 +190,7 @@ class DecisionTree(BaseModel):
 
     @staticmethod
     def calculate_entropy(probs):
+        probs = np.array([p for p in probs if p > 0])
         return -np.nan_to_num(np.sum(probs * np.log2(probs)))
 
     @staticmethod

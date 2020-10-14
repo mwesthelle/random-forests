@@ -146,4 +146,4 @@ class KFoldCrossValidation:
                 all_folds_results.append(acc)
 
             results.append(all_folds_results)
-        return results
+        return np.mean(results)
