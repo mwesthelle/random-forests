@@ -7,7 +7,7 @@ from typing import Dict, List
 import numpy as np
 
 from base_model import BaseModel
-from metrics import f_measure, precision
+from metrics import accuracy
 
 
 class KFoldCrossValidation:
@@ -131,29 +131,19 @@ class KFoldCrossValidation:
                     )
                 folds[-1].extend(remaining_data)
 
-            precisions: List[float] = []
-            f1_scores: List[float] = []
             fold_idxes: List[int] = list(range(len(folds)))
             random.shuffle(fold_idxes)
             all_folds_results = []
             for _ in range(k_folds):
                 test_fold_idx = fold_idxes.pop()
-                try:
-                    test_outcomes = np.array([int(t[-1]) for t in folds[test_fold_idx]])
-                except ValueError:
-                    test_outcomes = [t[-1] for t in folds[test_fold_idx]]
+                test_outcomes = [t[-1] for t in folds[test_fold_idx]]
                 train_folds = list(
                     chain(*(folds[:test_fold_idx] + folds[test_fold_idx + 1 :]))
                 )
                 self.model.fit(train_folds, attribute_names=self.headers[:-1])
                 predictions = self.model.predict(folds[test_fold_idx])
-
-                precisions.append(precision(predictions, test_outcomes))
-                f1_scores.append(f_measure(predictions, test_outcomes))
-                metrics = dict()
-                metrics["precision"] = precision(predictions, test_outcomes)
-                metrics["f1-score"] = f_measure(predictions, test_outcomes)
-                all_folds_results.append(metrics)
+                acc = accuracy(predictions, test_outcomes)
+                all_folds_results.append(acc)
 
             results.append(all_folds_results)
         return results
