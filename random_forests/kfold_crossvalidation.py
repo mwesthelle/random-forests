@@ -134,7 +134,7 @@ class KFoldCrossValidation:
             fold_idxes: List[int] = list(range(len(folds)))
             random.shuffle(fold_idxes)
             all_folds_results = []
-            for _ in range(k_folds):
+            for i in range(k_folds):
                 test_fold_idx = fold_idxes.pop()
                 test_outcomes = [t[-1] for t in folds[test_fold_idx]]
                 train_folds = list(
@@ -143,7 +143,9 @@ class KFoldCrossValidation:
                 self.model.fit(train_folds, attribute_names=self.headers[:-1])
                 predictions = self.model.predict(folds[test_fold_idx])
                 acc = accuracy(predictions, test_outcomes)
+                print(f"Fold {i + 1} accuracy: {100 * acc:.2f}%")
                 all_folds_results.append(acc)
 
             results.append(all_folds_results)
+        print(f"Mean accuracy: {100 * np.mean(results):.2f}%")
         return np.mean(results)
