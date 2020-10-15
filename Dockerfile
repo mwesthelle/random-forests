@@ -68,9 +68,6 @@ COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 RUN poetry install
 
 WORKDIR /app
-# COPY datasets ./datasets/
-# COPY *.py ./
-# COPY *.ipynb ./
 
 EXPOSE 8080
 
