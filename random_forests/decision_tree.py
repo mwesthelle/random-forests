@@ -12,7 +12,7 @@ import numpy as np
 DataType = NewType("DataType", Union[str, int, float])
 ClassType = NewType("ClassType", Union[str, int])
 AttributeValGain = NamedTuple(
-    "AttributeVal", attribute_name=str, attribute_val=DataType, gain_ratio=float
+    "AttributeVal", attribute_name=str, attribute_val=DataType, info_gain=float
 )
 
 
@@ -115,7 +115,13 @@ class DecisionTree(BaseModel):
             (att, DecisionTree.calculate_gain_ratio(att_info, outcomes_info, att_data))
             for att, (att_info, att_data) in attribute2info_data.items()
         ]
-        return max(gain_ratios, key=itemgetter(1))
+        info_gains: List[Tuple[str, float]] = [
+            (att, DecisionTree.calculate_info_gain(outcomes_info, att_info))
+            for att, (att_info, _) in attribute2info_data.items()
+        ]
+        best_cutting_point = max(gain_ratios, key=itemgetter(1))[0]
+        best_info_gain = max(info_gains, key=itemgetter(1))[1]
+        return best_cutting_point, best_info_gain
 
     def calculate_attribute_info(
         self, attribute_data: List[str], outcomes: List[str]
@@ -136,10 +142,16 @@ class DecisionTree(BaseModel):
             ) * DecisionTree.calculate_entropy(category_class_probs)
         return attribute_info
 
-    def print_tree(self, node: TreeNode):
+    def print_tree(self, node: TreeNode, indent=0):
+        pass
         for child in node.children:
-            print(child.cutting_point_attribute_val)
-            self.print_tree(child)
+            print(
+                " " * indent * 2,
+                child.cutting_point_attribute_val.attribute_name,
+                child.cutting_point_attribute_val.info_gain,
+            )
+            indent += 1
+            self.print_tree(child, indent)
 
     @staticmethod
     def _predict(
@@ -169,7 +181,7 @@ class DecisionTree(BaseModel):
                 return max(outcome_counter.items(), key=itemgetter(1))[0]
 
     @staticmethod
-    def split_attribute(node: TreeNode, chosen_attribute: str, gain_ratio: float):
+    def split_attribute(node: TreeNode, chosen_attribute: str, info_gain: float):
         ordered_data = OrderedDict(node.attribute_data_dict)
         attribute2idx_map = {
             attr: idx for idx, attr in enumerate(list(ordered_data.keys()))
@@ -198,7 +210,7 @@ class DecisionTree(BaseModel):
                 attribute_data_dict=children_data_dict[attr_value],
                 outcomes=class_outcomes[attr_value],
                 cutting_point_attribute_val=AttributeValGain(
-                    chosen_attribute, attr_value, gain_ratio
+                    chosen_attribute, attr_value, info_gain
                 ),
             )
             children.append(child_node)
