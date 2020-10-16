@@ -14,7 +14,7 @@ Jupyter notebook by doing `docker-compose up`.
 ## License
 MIT License
 
-Copyright (c) 2020 Matheus Westhelle
+Copyright (c) 2020 Matheus Westhelle, Dieu Merci Kengele
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
